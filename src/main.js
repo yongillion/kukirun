@@ -10,6 +10,7 @@ import { SceneManager } from './engine/scene.js';
 import { Toasts, text, COL } from './engine/ui.js';
 import { Assets } from './engine/assets.js';
 import { Save } from './engine/storage.js';
+import { Display } from './engine/display.js';
 import { Progress } from './game/progress.js';
 import { LoadingScene } from './scenes/loading.js';
 import { TitleScene } from './scenes/title.js';
@@ -48,6 +49,9 @@ class Game {
     this.errors = [];
     Save.load();
     this.applySettings();
+    Display.init({ auto: () => Save.data.settings.autoFS !== false });
+    // fullscreen / install state changed: rebuild buttons; leaving fullscreen mid-run pauses it
+    Display.onChange((kind) => { this.scenes.layout(); if (kind === 'fs' && !Display.isFullscreen) this.scenes.blur(); });
     this.input.handler = {
       pointer: (t, p) => this.scenes.pointer(t, p),
       key: (code, acts) => this.onKey(code, acts),
@@ -55,7 +59,12 @@ class Game {
       blur: () => this.scenes.blur(),
     };
     this.input.onFirstGesture = () => this.audio.unlock();
-    this.view.onResize = () => this.scenes.layout();
+    let wasRotated = this.view.rotated;
+    this.view.onResize = () => {
+      this.scenes.layout();
+      // turning the phone mid-run pauses so nobody crashes while rotating
+      if (this.view.rotated !== wasRotated) { wasRotated = this.view.rotated; this.scenes.blur(); }
+    };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.audio.suspend(); else this.audio.resume(); });
     window.addEventListener('error', (e) => this.errors.push(String(e.message || e)));
     window.addEventListener('unhandledrejection', (e) => this.errors.push(String(e.reason && e.reason.message || e.reason)));
@@ -76,6 +85,17 @@ class Game {
     loading.p.audio = 1;
     loading.done = true;
     window.__DD_READY__ = true;
+    this.registerSW();
+  }
+
+  /** Offline cache + "install as app". Registered after loading so the precache reuses the HTTP cache. */
+  registerSW() {
+    try {
+      if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol) || Display.embedded) return;
+      const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+      if (local && !/[?&]sw\b/.test(location.search)) return; // keep dev servers cache-free
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch((e) => console.warn('service worker', e));
+    } catch (e) { /* ignore */ }
   }
 
   async loadFonts() {

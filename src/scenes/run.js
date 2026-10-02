@@ -18,6 +18,8 @@ import { Progress } from '../game/progress.js';
 import { CHAR, LANDS, POWERUPS } from '../data/content.js';
 import { Save } from '../engine/storage.js';
 import { renderRun } from './run_view.js';
+import { fsButton } from './common.js';
+import { Display } from '../engine/display.js';
 
 const GY = CFG.GROUND_Y;
 const JELLY_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 16, 14, 12, 9, 7, 4, 2];
@@ -83,8 +85,9 @@ export class RunScene extends Scene {
     g.audio.play('count_beep');
     this.visHandler = () => { if (document.hidden && !this.paused && this.state !== 'over') this.setPaused(true); };
     document.addEventListener('visibilitychange', this.visHandler);
+    Display.keepAwake(true);
   }
-  exit() { document.removeEventListener('visibilitychange', this.visHandler); }
+  exit() { document.removeEventListener('visibilitychange', this.visHandler); Display.keepAwake(false); }
 
   buildUI() {
     this.ui.clear();
@@ -96,10 +99,14 @@ export class RunScene extends Scene {
     this.pauseUI.add(new Button({ x, y: H / 2 - 18, w: bw, h: bh, label: '다시 시작', icon: 'retry', color: 'orange', onClick: () => this.confirmLeave(true) }));
     this.pauseUI.add(new Button({ x, y: H / 2 + 74, w: bw, h: bh, label: '로비로', icon: 'home', color: 'pink', onClick: () => this.confirmLeave(false) }));
     const st = Save.data.settings;
-    this.musicBtn = this.pauseUI.add(new Button({ x: W / 2 - 80, y: H / 2 + 200, w: 64, round: true, icon: st.music > 0 ? 'music_on' : 'music_off', iconSize: 44, color: 'cream',
+    const fs = fsButton(this.game, 0, H / 2 + 200, { w: 64, iconSize: 40 });
+    const xs = fs ? [W / 2 - 120, W / 2, W / 2 + 120] : [W / 2 - 80, W / 2 + 80];
+    this.musicBtn = this.pauseUI.add(new Button({ x: xs[0], y: H / 2 + 200, w: 64, round: true, icon: st.music > 0 ? 'music_on' : 'music_off', iconSize: 44, color: 'cream',
       onClick: (b) => { st.music = st.music > 0 ? 0 : 0.7; this.game.applySettings(); b.icon = st.music > 0 ? 'music_on' : 'music_off'; Save.save(); } }));
-    this.sfxBtn = this.pauseUI.add(new Button({ x: W / 2 + 80, y: H / 2 + 200, w: 64, round: true, icon: st.sfx > 0 ? 'sound_on' : 'sound_off', iconSize: 44, color: 'cream',
+    this.sfxBtn = this.pauseUI.add(new Button({ x: xs[1], y: H / 2 + 200, w: 64, round: true, icon: st.sfx > 0 ? 'sound_on' : 'sound_off', iconSize: 44, color: 'cream',
       onClick: (b) => { st.sfx = st.sfx > 0 ? 0 : 0.9; this.game.applySettings(); b.icon = st.sfx > 0 ? 'sound_on' : 'sound_off'; Save.save(); } }));
+    this.fsBtn = fs;
+    if (fs) { fs.x = xs[2]; this.pauseUI.add(fs); }
   }
   layout() { if (this.pauseUI) this.buildUI(); }
 

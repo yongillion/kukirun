@@ -2,7 +2,8 @@
 //  Shared helpers for menu scenes
 // =============================================================================
 import { Assets } from '../engine/assets.js';
-import { Scene } from '../engine/scene.js';
+import { Scene, Modal } from '../engine/scene.js';
+import { Display } from '../engine/display.js';
 import { Button, text, ribbon, counter, COL, rrPath, icon } from '../engine/ui.js';
 import { fmt, TAU } from '../engine/util.js';
 import { Save } from '../engine/storage.js';
@@ -83,4 +84,77 @@ export function pill(ctx, x, y, label, color = COL.pink, size = 16) {
   ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = COL.ink; ctx.lineWidth = 3; ctx.stroke();
   ctx.restore();
   text(ctx, label, x, y + 1, { size, color: '#fff', stroke: COL.ink, sw: 4 });
+}
+
+// ---------------------------------------------------------------------------
+// Fullscreen / home-screen helpers (shared by title, lobby, settings, pause)
+// ---------------------------------------------------------------------------
+/** Round fullscreen button suited to this browser, or null when it can't help here. */
+export function fsButton(game, x, y, o = {}) {
+  if (!Display.mode) return null;
+  const on = Display.isFullscreen;
+  return new Button({ x, y, w: o.w ?? 58, round: true, icon: on ? 'exitfs' : 'fullscreen', iconSize: o.iconSize ?? 36, color: o.color ?? 'cream', sound: 'ui_click',
+    onClick: () => fullscreenAction(game) });
+}
+
+export function fullscreenAction(game) {
+  const mode = Display.mode;
+  if (mode === 'toggle') {
+    if (Display.isFullscreen) Display.exit();
+    else Display.enterSoon((ok) => {
+      if (ok) return;
+      if (Display.kakao) showExternalHelp(game);
+      else game.toast('이 브라우저에서는 전체 화면을 쓸 수 없어요', { icon: 'info' });
+    });
+  } else if (mode === 'help') showHomeScreenHelp(game);
+  else if (mode === 'external') showExternalHelp(game);
+}
+
+function stepBadge(ctx, x, y, n) {
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, 17, 0, TAU);
+  ctx.fillStyle = COL.pink; ctx.fill(); ctx.strokeStyle = COL.ink; ctx.lineWidth = 3.5; ctx.stroke(); ctx.restore();
+  text(ctx, String(n), x, y + 1, { size: 20, font: 'num', color: '#fff', stroke: COL.ink, sw: 4 });
+}
+function glyphDisc(ctx, x, y, name, color = COL.blue) {
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, 30, 0, TAU);
+  ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = COL.ink; ctx.lineWidth = 4; ctx.stroke(); ctx.restore();
+  icon(ctx, name, x, y, 40);
+}
+
+/** iPhone / iPad Safari: fullscreen means "Add to Home Screen" and launching from the icon. */
+export function showHomeScreenHelp(game) {
+  game.scenes.modal(new Modal(game, {
+    title: '전체 화면으로 하기', color: 'blue', width: 720, height: 480,
+    buttons: [{ label: '알겠어요', color: 'green', key: ['confirm', 'back', 'Space'] }],
+    draw: (ctx, b) => {
+      text(ctx, '홈 화면에 추가한 뒤 아이콘으로 실행하면 전체 화면이 돼요', b.x + b.w / 2, b.y + 76, { size: 20, font: 'bold', color: COL.ink2, maxW: b.w - 60 });
+      const steps = [
+        ['share', 'Safari의 공유 버튼을 눌러요'],
+        ['addhome', "'홈 화면에 추가'를 골라요"],
+        [null, "홈 화면의 '디저트 대시'로 실행!"],
+      ];
+      steps.forEach(([ic, label], i) => {
+        const y = b.y + 142 + i * 78;
+        stepBadge(ctx, b.x + 64, y, i + 1);
+        if (ic) glyphDisc(ctx, b.x + 128, y, ic);
+        else Assets.draw(ctx, 'portrait_chip', 0, b.x + 128, y, { scale: 0.62 });
+        text(ctx, label, b.x + 176, y + 1, { size: 25, align: 'left', color: COL.ink, maxW: b.w - 210 });
+      });
+      text(ctx, '휴대폰은 가로로 돌려서 플레이하세요', b.x + b.w / 2, b.y + b.h - 128, { size: 17, font: 'bold', color: COL.ink2 });
+    },
+  }));
+}
+
+/** KakaoTalk's in-app browser can't go fullscreen: offer to reopen in the real browser. */
+export function showExternalHelp(game) {
+  game.scenes.modal(new Modal(game, {
+    title: '전체 화면으로 하기', color: 'yellow', width: 680, height: 360,
+    message: '카카오톡 안에서는 전체 화면을 쓸 수 없어요.\n브라우저로 열면 전체 화면으로 즐길 수 있어요!',
+    buttons: [{ label: '닫기', color: 'grey', key: ['back'] }, { label: '브라우저로 열기', color: 'green', key: ['confirm'], onClick: () => Display.openExternal() }],
+  }));
+}
+
+/** Chrome / Edge / Samsung Internet: the browser's own "install app" dialog. */
+export function installApp(game) {
+  Display.install().then((ok) => { if (ok) game.toast('홈 화면에 설치했어요! 아이콘으로 실행해 보세요', { icon: 'check', dur: 3 }); });
 }

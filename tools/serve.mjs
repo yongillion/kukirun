@@ -12,6 +12,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.woff': 'font/woff',
   '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.md': 'text/markdown; charset=utf-8', '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
 };
 
 export function startServer(port = 8080, root = ROOT) {

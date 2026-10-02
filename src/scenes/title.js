@@ -7,7 +7,7 @@ import { Background } from '../game/background.js';
 import { text, COL } from '../engine/ui.js';
 import { CHARS, PETS } from '../data/content.js';
 import { CFG } from '../config.js';
-import { drawChar, drawPet } from './common.js';
+import { drawChar, drawPet, fsButton } from './common.js';
 import { Ease } from '../engine/util.js';
 
 export class TitleScene extends Scene {
@@ -18,6 +18,13 @@ export class TitleScene extends Scene {
     this.parade = CHARS.map((c, i) => ({ id: c.id, off: i * 210, jump: 0, vy: 0, y: 0 }));
     this.leaving = false;
     this.game.audio.playMusic('bgm_lobby', { fade: 0.8 });
+    this.build();
+  }
+  layout() { this.build(); }
+  build() {
+    this.ui.clear();
+    const b = fsButton(this.game, this.W - 50, 50);
+    if (b) this.ui.add(b);
   }
   update(dt) {
     super.update(dt);
@@ -35,7 +42,11 @@ export class TitleScene extends Scene {
     this.game.audio.play('ui_select');
     this.game.goLobby();
   }
-  pointer(type) { if (type === 'down') this.start(); return true; }
+  pointer(type, p) {
+    if (this.ui.pointer(type, p)) return true;
+    if (type === 'down') this.start();
+    return true;
+  }
   key(code, acts) { if (acts.includes('confirm') || acts.includes('jump')) this.start(); }
   render(ctx) {
     const W = this.W, H = this.H;
@@ -61,5 +72,6 @@ export class TitleScene extends Scene {
       text(ctx, '화면을 눌러 시작하세요', W / 2, H - 44, { size: 30, color: '#fff', stroke: COL.ink, sw: 7, alpha: a });
     }
     text(ctx, `v${CFG.VERSION}`, W - 16, H - 16, { size: 14, font: 'num', align: 'right', color: '#fff', stroke: COL.ink, sw: 3, alpha: 0.8 });
+    this.ui.draw(ctx);
   }
 }

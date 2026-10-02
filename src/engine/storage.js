@@ -18,7 +18,7 @@ export function defaultSave() {
     records: [],
     missionHist: {},
     stats: { runs: 0, jumps: 0, djumps: 0, slideTime: 0, smash: 0, rush: 0, coinsTotal: 0, jellyTotal: 0, plays: {} },
-    settings: { music: 0.7, sfx: 0.9, shake: true, touch: 'auto', quality: 'high', vibrate: true },
+    settings: { music: 0.7, sfx: 0.9, shake: true, touch: 'auto', quality: 'high', vibrate: true, autoFS: true },
     tutorial: false,
     created: Date.now(),
   };

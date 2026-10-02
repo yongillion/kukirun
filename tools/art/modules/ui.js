@@ -472,11 +472,51 @@ const ICONS = {
 
   shield(c) { place(c, 48, 46, 1.03, (f) => drawShieldCrest(c, LW * f)); },
   rocket(c) { place(c, 47, 49, 0.98, (f) => drawRocket(c, LW * f)); },
+
+  // ---- display / install glyphs (white, sit on cream or coloured buttons)
+  fullscreen(c) {
+    const sh = (cc) => { for (const [x, y, dx, dy] of [[12, 12, 1, 1], [84, 12, -1, 1], [12, 84, 1, -1], [84, 84, -1, -1]]) cornerL(x, y, dx, dy)(cc); };
+    body(c, sh, GLYPH, 30, { gloss: false });
+  },
+  exitfs(c) {
+    const sh = (cc) => { for (const [x, y, dx, dy] of [[39, 39, -1, -1], [57, 39, 1, -1], [39, 57, -1, 1], [57, 57, 1, 1]]) cornerL(x, y, dx, dy)(cc); };
+    body(c, sh, GLYPH, 30, { gloss: false });
+  },
+  share(c) {
+    // open tray with inward flanges + an arrow rising out of it (the familiar "share" glyph)
+    const tray = roundPoly([[36, 38], [36, 48], [28, 48], [28, 76], [68, 76], [68, 48], [60, 48], [60, 38], [78, 38], [78, 87], [18, 87], [18, 38]],
+      [0.3, 0.3, 0.2, 0.15, 0.15, 0.2, 0.3, 0.3, 0.12, 0.12, 0.12, 0.12]);
+    body(c, tray, GLYPH, 30, { gloss: false });
+    const arrow = roundPoly([[48, 6], [70, 30], [54.5, 30], [54.5, 64], [41.5, 64], [41.5, 30], [26, 30]], [0.12, 0.2, 0.1, 0.25, 0.25, 0.1, 0.2]);
+    body(c, arrow, GLYPH, 24, { gloss: false });
+  },
+  addhome(c) {
+    // rounded square with a plus ("add to home screen")
+    const ring = (cc) => { rrDir(12, 12, 72, 72, 20, false)(cc); rrDir(24, 24, 48, 48, 11, true)(cc); }; // inner contour reversed = hole
+    body(c, ring, GLYPH, 34, { gloss: false });
+    body(c, plusShape(48, 48, 15.5, 5.5), GLYPH, 18, { gloss: false });
+  },
 };
+
+/** Rounded rect path with explicit winding (ccw=true punches a hole under the nonzero rule). */
+function rrDir(x, y, w, h, r, ccw) {
+  return (c) => {
+    c.moveTo(x + r, y);
+    if (!ccw) { c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); }
+    else { c.arcTo(x, y, x, y + h, r); c.arcTo(x, y + h, x + w, y + h, r); c.arcTo(x + w, y + h, x + w, y, r); c.arcTo(x + w, y, x, y, r); }
+    c.closePath();
+  };
+}
+/** L-shaped bracket: corner at (cx,cy), arms of length L and width w towards +dx / +dy. */
+function cornerL(cx, cy, dx, dy, L = 27, w = 12) {
+  return roundPoly([[cx, cy], [cx + dx * L, cy], [cx + dx * L, cy + dy * w], [cx + dx * w, cy + dy * w], [cx + dx * w, cy + dy * L], [cx, cy + dy * L]],
+    [0.2, 0.25, 0.25, 0.15, 0.25, 0.25]);
+}
 
 const ORDER = ['coin', 'jelly', 'star', 'milk', 'lock', 'check', 'gear', 'pause', 'play', 'home', 'retry', 'sound_on', 'sound_off',
   'music_on', 'music_off', 'arrow_l', 'arrow_r', 'close', 'plus', 'trophy', 'mission', 'lab', 'char', 'pet', 'boost', 'crown',
-  'clock', 'flag', 'bag', 'heart', 'info', 'gift', 'btn_jump', 'btn_slide', 'level', 'new', 'shield', 'rocket'];
+  'clock', 'flag', 'bag', 'heart', 'info', 'gift', 'btn_jump', 'btn_slide', 'level', 'new', 'shield', 'rocket',
+  'fullscreen', 'exitfs', 'share', 'addhome'];
 
 function iconItem(name) {
   return {

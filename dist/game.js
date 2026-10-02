@@ -1,4 +1,4 @@
-/* Dessert Dash (project kukirun) — bundled by tools/build.mjs from src/ (44 modules). Do not edit; edit src/ and rebuild. */
+/* Dessert Dash (project kukirun) — bundled by tools/build.mjs from src/ (45 modules). Do not edit; edit src/ and rebuild. */
 (function () {
 'use strict';
 const __mods = Object.create(null), __cache = Object.create(null);
@@ -17,7 +17,7 @@ __exp(__exports, { "CFG": () => CFG, "LAND_IDS": () => LAND_IDS });
 //  Dessert Dash — global tuning constants (logical units: 720 px tall view)
 // =============================================================================
 const CFG = {
-  VERSION: '1.0.0',
+  VERSION: '1.1.0',
   SAVE_KEY: 'dessert-dash-save-v1',
 
   // view
@@ -232,10 +232,14 @@ __exp(__exports, { "View": () => View });
 // =============================================================================
 //  View: full-window canvas with a 720-unit-tall logical coordinate system.
 //  Logical width adapts to the aspect ratio (1100..1600); outside that range the
-//  game is letter-/pillar-boxed.
+//  game is letter-/pillar-boxed. The logical area stays inside the screen's safe
+//  area (notch / rounded corners). On a touch screen held upright the landscape
+//  game is drawn turned 90 degrees, so it is playable even with rotation lock on.
 // =============================================================================
 const { CFG } = __req("src/config.js");
 const { clamp } = __req("src/engine/util.js");
+
+const TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches || ((navigator.maxTouchPoints || 0) > 0 && matchMedia('(hover: none)').matches); } catch (e) { return false; } })();
 
 class View {
   constructor(canvas) {
@@ -247,6 +251,17 @@ class View {
     this.ox = 0; this.oy = 0;
     this.dpr = 1;
     this.quality = 'high';
+    this.rotated = false;          // portrait touch screen: landscape frame turned 90 degrees clockwise
+    this.allowRotate = TOUCH;
+    this.safe = { l: 0, r: 0, t: 0, b: 0 };
+    this.safeOverride = null;      // ?safe=l,r,t,b (testing)
+    try {
+      const m = /[?&]safe=([\d.]+),([\d.]+),([\d.]+),([\d.]+)/.exec(location.search);
+      if (m) this.safeOverride = { l: +m[1], r: +m[2], t: +m[3], b: +m[4] };
+      if (/[?&]rotate=0/.test(location.search)) this.allowRotate = false;
+      if (/[?&]rotate=1/.test(location.search)) this.allowRotate = true;
+    } catch (e) { /* ignore */ }
+    this._probe = null;
     this.onResize = null;
     this._resize = () => this.resize();
     window.addEventListener('resize', this._resize);
@@ -257,17 +272,42 @@ class View {
 
   setQuality(q) { this.quality = q; this.resize(); }
 
+  /** CSS-px safe-area insets of the screen (env(safe-area-inset-*)), read via a hidden probe. */
+  readSafe() {
+    if (this.safeOverride) return this.safeOverride;
+    try {
+      if (!this._probe) {
+        const p = document.createElement('div');
+        p.setAttribute('aria-hidden', 'true');
+        p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+          'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+        document.body.appendChild(p);
+        this._probe = p;
+      }
+      const cs = getComputedStyle(this._probe);
+      return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+    } catch (e) { return { l: 0, r: 0, t: 0, b: 0 }; }
+  }
+
   resize() {
     const vv = window.visualViewport;
-    const ww = Math.max(1, Math.round(vv ? vv.width : window.innerWidth));
-    const wh = Math.max(1, Math.round(vv ? vv.height : window.innerHeight));
-    const aspect = ww / wh;
-    const W = clamp(Math.round(this.H * aspect), CFG.VIEW_W_MIN, CFG.VIEW_W_MAX);
-    const scale = Math.min(ww / W, wh / this.H);
+    const sw = Math.max(1, Math.round(vv ? vv.width : window.innerWidth));
+    const sh = Math.max(1, Math.round(vv ? vv.height : window.innerHeight));
+    const rot = this.allowRotate && sh > sw * 1.08;
+    const s = this.readSafe();
+    // the (landscape) frame we draw into, and its insets: turning the frame 90deg
+    // clockwise maps screen top->frame left, bottom->right, right->top, left->bottom
+    const ww = rot ? sh : sw, wh = rot ? sw : sh;
+    const ins = rot ? { l: s.t, r: s.b, t: s.r, b: s.l } : s;
+    this.safe = ins;
+    // the bottom inset (home indicator) is not reserved: art may run underneath it
+    const aw = Math.max(1, ww - ins.l - ins.r), ah = Math.max(1, wh - ins.t);
+    const W = clamp(Math.round(this.H * (aw / ah)), CFG.VIEW_W_MIN, CFG.VIEW_W_MAX);
+    const scale = Math.min(aw / W, ah / this.H);
     this.W = W;
     this.scale = scale;
-    this.ox = Math.round((ww - W * scale) / 2);
-    this.oy = Math.round((wh - this.H * scale) / 2);
+    this.ox = Math.round(ins.l + (aw - W * scale) / 2);
+    this.oy = Math.round(ins.t + (ah - this.H * scale) / 2);
     let dpr = window.devicePixelRatio || 1;
     dpr = Math.min(dpr, this.quality === 'high' ? 2.5 : 1.25);
     // pixel budget for fill-rate on huge / high-dpi screens
@@ -279,8 +319,12 @@ class View {
     if (this.canvas.width !== cw || this.canvas.height !== ch) {
       this.canvas.width = cw; this.canvas.height = ch;
     }
-    this.canvas.style.width = ww + 'px';
-    this.canvas.style.height = wh + 'px';
+    const st = this.canvas.style;
+    st.width = ww + 'px';
+    st.height = wh + 'px';
+    st.transformOrigin = '0 0';
+    st.transform = rot ? `translate(${sw}px, 0px) rotate(90deg)` : '';
+    this.rotated = rot;
     this.ww = ww; this.wh = wh;
     if (this.onResize) this.onResize(this);
   }
@@ -306,7 +350,10 @@ class View {
 
   toLogical(clientX, clientY) {
     const r = this.canvas.getBoundingClientRect();
-    return { x: (clientX - r.left - this.ox) / this.scale, y: (clientY - r.top - this.oy) / this.scale };
+    // frame coordinates (undo the 90deg turn when rotated)
+    const fx = this.rotated ? clientY - r.top : clientX - r.left;
+    const fy = this.rotated ? r.right - clientX : clientY - r.top;
+    return { x: (fx - this.ox) / this.scale, y: (fy - this.oy) / this.scale };
   }
 }
 
@@ -5809,6 +5856,38 @@ const ATLAS_UI = {
     96,
     48,
     48
+   ],
+   "fullscreen": [
+    1804,
+    104,
+    96,
+    96,
+    48,
+    48
+   ],
+   "exitfs": [
+    1904,
+    104,
+    96,
+    96,
+    48,
+    48
+   ],
+   "share": [
+    4,
+    204,
+    96,
+    96,
+    48,
+    48
+   ],
+   "addhome": [
+    104,
+    204,
+    96,
+    96,
+    48,
+    48
    ]
   }
  },
@@ -6541,7 +6620,7 @@ function defaultSave() {
     records: [],
     missionHist: {},
     stats: { runs: 0, jumps: 0, djumps: 0, slideTime: 0, smash: 0, rush: 0, coinsTotal: 0, jellyTotal: 0, plays: {} },
-    settings: { music: 0.7, sfx: 0.9, shake: true, touch: 'auto', quality: 'high', vibrate: true },
+    settings: { music: 0.7, sfx: 0.9, shake: true, touch: 'auto', quality: 'high', vibrate: true, autoFS: true },
     tutorial: false,
     created: Date.now(),
   };
@@ -6575,6 +6654,161 @@ const Save = {
     this.data.settings = keepSettings;
     this.save();
   },
+};
+
+});
+
+// ---- src/engine/display.js
+__def("src/engine/display.js", function (__exports, __req) {
+__exp(__exports, { "Display": () => Display });
+// =============================================================================
+//  Display helpers for phones & tablets: fullscreen (+ landscape lock), the
+//  "install as app" prompt, screen wake lock and a little platform sniffing.
+//
+//  mode tells a fullscreen button what it can do in this browser:
+//    'toggle'   Fullscreen API works (Android, iPad, desktop)
+//    'help'     iPhone Safari: no Fullscreen API -> explain "홈 화면에 추가"
+//    'external' KakaoTalk in-app browser -> offer to reopen in a real browser
+//    null       already an installed app window, or embedded where it can't work
+// =============================================================================
+const doc = document, root = document.documentElement;
+const mq = (q) => { try { return matchMedia(q).matches; } catch (e) { return false; } };
+const UA = navigator.userAgent || '';
+
+const Display = {
+  ios: /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1),
+  android: /Android/i.test(UA),
+  kakao: /KAKAOTALK/i.test(UA),
+  touch: mq('(pointer: coarse)') || ((navigator.maxTouchPoints || 0) > 0 && mq('(hover: none)')),
+  embedded: (() => { try { return window.self !== window.top; } catch (e) { return true; } })(),
+
+  installEvt: null,
+  autoArmed: false,
+  pending: null,
+  lastPointer: 'mouse',
+  restoreOnReturn: false,
+  fsExitAt: -1e9,
+  wake: null,
+  wakeWanted: false,
+  listeners: new Set(),
+
+  /** Running as an installed app window ("display-mode: fullscreen" also matches Fullscreen-API fullscreen, so exclude that). */
+  get standalone() { return mq('(display-mode: standalone)') || navigator.standalone === true || (mq('(display-mode: fullscreen)') && !this.isFullscreen); },
+  get canFullscreen() { return !!(doc.fullscreenEnabled || doc.webkitFullscreenEnabled) && !!(root.requestFullscreen || root.webkitRequestFullscreen); },
+  get isFullscreen() { return !!(doc.fullscreenElement || doc.webkitFullscreenElement); },
+  get mode() {
+    if (this.standalone) return null;
+    if (this.kakao && (this.ios || !this.canFullscreen)) return 'external';
+    if (this.canFullscreen) return 'toggle';
+    if (this.ios && !this.embedded) return 'help';
+    return null;
+  },
+  get canInstall() { return !!this.installEvt && !this.standalone; },
+
+  /** o.auto(): whether to go fullscreen on the first tap (touch devices only). */
+  init(o = {}) {
+    this.autoPref = o.auto || (() => true);
+    this.autoArmed = this.touch && this.autoPref();
+    const onFs = () => {
+      if (!this.isFullscreen) this.fsExitAt = performance.now();
+      this.emit('fs');
+    };
+    doc.addEventListener('fullscreenchange', onFs);
+    doc.addEventListener('webkitfullscreenchange', onFs);
+    // The first tap (and the first tap after coming back to the app, if we were
+    // fullscreen when it went to the background) enters fullscreen. For touch the
+    // request has to happen in touchend: pointerdown is not a user gesture, and
+    // Safari does not accept pointerup either.
+    const release = (e) => {
+      if (e.type === 'pointerup' && e.pointerType === 'touch') return; // wait for its touchend
+      if (this.pending) { this.pending(); return; }
+      if (!this.autoArmed) return;
+      this.autoArmed = false;
+      if (this.mode === 'toggle' && !this.isFullscreen) this.enter();
+    };
+    window.addEventListener('pointerdown', (e) => { this.lastPointer = e.pointerType || 'mouse'; }, true);
+    window.addEventListener('pointerup', release, true);
+    window.addEventListener('touchend', release, true);
+    doc.addEventListener('visibilitychange', () => {
+      if (doc.hidden) {
+        if (this.isFullscreen || performance.now() - this.fsExitAt < 1500) this.restoreOnReturn = true;
+      } else {
+        if (this.restoreOnReturn && this.touch && this.autoPref()) this.autoArmed = true;
+        this.restoreOnReturn = false;
+        if (this.wakeWanted) this.keepAwake(true);
+      }
+    });
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); this.installEvt = e; this.emit('install'); });
+    window.addEventListener('appinstalled', () => { this.installEvt = null; this.emit('install'); });
+    try { matchMedia('(display-mode: standalone), (display-mode: fullscreen)').addEventListener('change', () => this.emit('mode')); } catch (e) { /* old browsers */ }
+  },
+
+  /** Enter fullscreen from a button / toggle handler: right away for mouse & keys, at touchend for touch. */
+  enterSoon(cb) {
+    const run = () => { if (this.pending !== run) return; this.pending = null; this.autoArmed = false; this.enter().then((ok) => { if (cb) cb(ok); }); };
+    this.pending = run;
+    if (this.lastPointer === 'touch') setTimeout(run, 700); // fallback if no touchend arrives
+    else run();
+  },
+
+  async enter() {
+    try {
+      if (root.requestFullscreen) await root.requestFullscreen({ navigationUI: 'hide' });
+      else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
+      else return false;
+    } catch (e) { return false; }
+    this.lockLandscape();
+    return true;
+  },
+  async exit() {
+    this.autoArmed = false;
+    this.restoreOnReturn = false;
+    try {
+      if (doc.exitFullscreen) { if (doc.fullscreenElement) await doc.exitFullscreen(); }
+      else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+    } catch (e) { /* already out */ }
+  },
+  toggle() { return this.isFullscreen ? this.exit() : this.enter(); },
+  async lockLandscape() {
+    try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (e) { /* only works fullscreen / installed */ }
+  },
+
+  /** Show the browser's own "install app" dialog (Chrome / Edge / Samsung Internet). */
+  async install() {
+    const e = this.installEvt;
+    if (!e) return false;
+    this.installEvt = null;
+    let ok = false;
+    try { await e.prompt(); const r = await e.userChoice; ok = !!r && r.outcome === 'accepted'; } catch (err) { ok = false; }
+    this.emit('install');
+    return ok;
+  },
+
+  /** Keep the screen on while running (released automatically when hidden). */
+  async keepAwake(on) {
+    this.wakeWanted = on;
+    if (!navigator.wakeLock) return;
+    if (on) {
+      if (this.wake || doc.hidden) return;
+      try {
+        const w = await navigator.wakeLock.request('screen');
+        if (!this.wakeWanted) { w.release().catch(() => {}); return; }
+        this.wake = w;
+        w.addEventListener('release', () => { if (this.wake === w) this.wake = null; });
+      } catch (e) { this.wake = null; }
+    } else if (this.wake) {
+      const w = this.wake; this.wake = null;
+      try { await w.release(); } catch (e) { /* ignore */ }
+    }
+  },
+
+  /** Reopen the page outside the KakaoTalk in-app browser. */
+  openExternal() {
+    location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+  },
+
+  onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
+  emit(kind) { for (const fn of [...this.listeners]) { try { fn(kind); } catch (e) { console.error(e); } } },
 };
 
 });
@@ -7113,12 +7347,13 @@ class Background {
 
 // ---- src/scenes/common.js
 __def("src/scenes/common.js", function (__exports, __req) {
-__exp(__exports, { "drawLobbyBg": () => drawLobbyBg, "drawChar": () => drawChar, "drawPet": () => drawPet, "stars": () => stars, "pill": () => pill, "MenuScene": () => MenuScene });
+__exp(__exports, { "drawLobbyBg": () => drawLobbyBg, "drawChar": () => drawChar, "drawPet": () => drawPet, "stars": () => stars, "pill": () => pill, "fsButton": () => fsButton, "fullscreenAction": () => fullscreenAction, "showHomeScreenHelp": () => showHomeScreenHelp, "showExternalHelp": () => showExternalHelp, "installApp": () => installApp, "MenuScene": () => MenuScene });
 // =============================================================================
 //  Shared helpers for menu scenes
 // =============================================================================
 const { Assets } = __req("src/engine/assets.js");
-const { Scene } = __req("src/engine/scene.js");
+const { Scene, Modal } = __req("src/engine/scene.js");
+const { Display } = __req("src/engine/display.js");
 const { Button, text, ribbon, counter, COL, rrPath, icon } = __req("src/engine/ui.js");
 const { fmt, TAU } = __req("src/engine/util.js");
 const { Save } = __req("src/engine/storage.js");
@@ -7201,6 +7436,79 @@ function pill(ctx, x, y, label, color = COL.pink, size = 16) {
   text(ctx, label, x, y + 1, { size, color: '#fff', stroke: COL.ink, sw: 4 });
 }
 
+// ---------------------------------------------------------------------------
+// Fullscreen / home-screen helpers (shared by title, lobby, settings, pause)
+// ---------------------------------------------------------------------------
+/** Round fullscreen button suited to this browser, or null when it can't help here. */
+function fsButton(game, x, y, o = {}) {
+  if (!Display.mode) return null;
+  const on = Display.isFullscreen;
+  return new Button({ x, y, w: o.w ?? 58, round: true, icon: on ? 'exitfs' : 'fullscreen', iconSize: o.iconSize ?? 36, color: o.color ?? 'cream', sound: 'ui_click',
+    onClick: () => fullscreenAction(game) });
+}
+
+function fullscreenAction(game) {
+  const mode = Display.mode;
+  if (mode === 'toggle') {
+    if (Display.isFullscreen) Display.exit();
+    else Display.enterSoon((ok) => {
+      if (ok) return;
+      if (Display.kakao) showExternalHelp(game);
+      else game.toast('이 브라우저에서는 전체 화면을 쓸 수 없어요', { icon: 'info' });
+    });
+  } else if (mode === 'help') showHomeScreenHelp(game);
+  else if (mode === 'external') showExternalHelp(game);
+}
+
+function stepBadge(ctx, x, y, n) {
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, 17, 0, TAU);
+  ctx.fillStyle = COL.pink; ctx.fill(); ctx.strokeStyle = COL.ink; ctx.lineWidth = 3.5; ctx.stroke(); ctx.restore();
+  text(ctx, String(n), x, y + 1, { size: 20, font: 'num', color: '#fff', stroke: COL.ink, sw: 4 });
+}
+function glyphDisc(ctx, x, y, name, color = COL.blue) {
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, 30, 0, TAU);
+  ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = COL.ink; ctx.lineWidth = 4; ctx.stroke(); ctx.restore();
+  icon(ctx, name, x, y, 40);
+}
+
+/** iPhone / iPad Safari: fullscreen means "Add to Home Screen" and launching from the icon. */
+function showHomeScreenHelp(game) {
+  game.scenes.modal(new Modal(game, {
+    title: '전체 화면으로 하기', color: 'blue', width: 720, height: 480,
+    buttons: [{ label: '알겠어요', color: 'green', key: ['confirm', 'back', 'Space'] }],
+    draw: (ctx, b) => {
+      text(ctx, '홈 화면에 추가한 뒤 아이콘으로 실행하면 전체 화면이 돼요', b.x + b.w / 2, b.y + 76, { size: 20, font: 'bold', color: COL.ink2, maxW: b.w - 60 });
+      const steps = [
+        ['share', 'Safari의 공유 버튼을 눌러요'],
+        ['addhome', "'홈 화면에 추가'를 골라요"],
+        [null, "홈 화면의 '디저트 대시'로 실행!"],
+      ];
+      steps.forEach(([ic, label], i) => {
+        const y = b.y + 142 + i * 78;
+        stepBadge(ctx, b.x + 64, y, i + 1);
+        if (ic) glyphDisc(ctx, b.x + 128, y, ic);
+        else Assets.draw(ctx, 'portrait_chip', 0, b.x + 128, y, { scale: 0.62 });
+        text(ctx, label, b.x + 176, y + 1, { size: 25, align: 'left', color: COL.ink, maxW: b.w - 210 });
+      });
+      text(ctx, '휴대폰은 가로로 돌려서 플레이하세요', b.x + b.w / 2, b.y + b.h - 128, { size: 17, font: 'bold', color: COL.ink2 });
+    },
+  }));
+}
+
+/** KakaoTalk's in-app browser can't go fullscreen: offer to reopen in the real browser. */
+function showExternalHelp(game) {
+  game.scenes.modal(new Modal(game, {
+    title: '전체 화면으로 하기', color: 'yellow', width: 680, height: 360,
+    message: '카카오톡 안에서는 전체 화면을 쓸 수 없어요.\n브라우저로 열면 전체 화면으로 즐길 수 있어요!',
+    buttons: [{ label: '닫기', color: 'grey', key: ['back'] }, { label: '브라우저로 열기', color: 'green', key: ['confirm'], onClick: () => Display.openExternal() }],
+  }));
+}
+
+/** Chrome / Edge / Samsung Internet: the browser's own "install app" dialog. */
+function installApp(game) {
+  Display.install().then((ok) => { if (ok) game.toast('홈 화면에 설치했어요! 아이콘으로 실행해 보세요', { icon: 'check', dur: 3 }); });
+}
+
 });
 
 // ---- src/scenes/title.js
@@ -7215,7 +7523,7 @@ const { Background } = __req("src/game/background.js");
 const { text, COL } = __req("src/engine/ui.js");
 const { CHARS, PETS } = __req("src/data/content.js");
 const { CFG } = __req("src/config.js");
-const { drawChar, drawPet } = __req("src/scenes/common.js");
+const { drawChar, drawPet, fsButton } = __req("src/scenes/common.js");
 const { Ease } = __req("src/engine/util.js");
 
 class TitleScene extends Scene {
@@ -7226,6 +7534,13 @@ class TitleScene extends Scene {
     this.parade = CHARS.map((c, i) => ({ id: c.id, off: i * 210, jump: 0, vy: 0, y: 0 }));
     this.leaving = false;
     this.game.audio.playMusic('bgm_lobby', { fade: 0.8 });
+    this.build();
+  }
+  layout() { this.build(); }
+  build() {
+    this.ui.clear();
+    const b = fsButton(this.game, this.W - 50, 50);
+    if (b) this.ui.add(b);
   }
   update(dt) {
     super.update(dt);
@@ -7243,7 +7558,11 @@ class TitleScene extends Scene {
     this.game.audio.play('ui_select');
     this.game.goLobby();
   }
-  pointer(type) { if (type === 'down') this.start(); return true; }
+  pointer(type, p) {
+    if (this.ui.pointer(type, p)) return true;
+    if (type === 'down') this.start();
+    return true;
+  }
   key(code, acts) { if (acts.includes('confirm') || acts.includes('jump')) this.start(); }
   render(ctx) {
     const W = this.W, H = this.H;
@@ -7269,6 +7588,7 @@ class TitleScene extends Scene {
       text(ctx, '화면을 눌러 시작하세요', W / 2, H - 44, { size: 30, color: '#fff', stroke: COL.ink, sw: 7, alpha: a });
     }
     text(ctx, `v${CFG.VERSION}`, W - 16, H - 16, { size: 14, font: 'num', align: 'right', color: '#fff', stroke: COL.ink, sw: 3, alpha: 0.8 });
+    this.ui.draw(ctx);
   }
 }
 
@@ -7287,7 +7607,7 @@ const { fmt, TAU, Ease } = __req("src/engine/util.js");
 const { Save } = __req("src/engine/storage.js");
 const { Progress } = __req("src/game/progress.js");
 const { CHAR, CHARS, PET, PETS, TIPS, xpNeed } = __req("src/data/content.js");
-const { drawLobbyBg, drawChar, drawPet, pill } = __req("src/scenes/common.js");
+const { drawLobbyBg, drawChar, drawPet, pill, fsButton } = __req("src/scenes/common.js");
 
 class LobbyScene extends Scene {
   enter() {
@@ -7318,6 +7638,8 @@ class LobbyScene extends Scene {
     });
     this.playBtn = this.ui.add(new Button({ x: colX, y: 440, w: bw * 2 + gap, h: 128, label: '달리기!', icon: 'play', iconSize: 76, color: 'green', size: 48, key: ['confirm', 'Space'], sound: 'ui_select', onClick: () => this.game.goScene('prerun') }));
     this.ui.add(new Button({ x: W - 50, y: 50, w: 58, round: true, icon: 'gear', iconSize: 40, color: 'cream', onClick: () => this.game.goScene('settings') }));
+    this.fsBtn = fsButton(this.game, W - 120, 50);
+    if (this.fsBtn) this.ui.add(this.fsBtn);
   }
   update(dt) {
     super.update(dt);
@@ -7392,7 +7714,7 @@ class LobbyScene extends Scene {
     text(ctx, '최고 기록', 74, 119, { size: 17, align: 'left', color: '#ffe680', stroke: COL.ink, sw: 4 });
     text(ctx, fmt(d.best), 306, 120, { size: 22, font: 'num', align: 'right', color: '#fff', stroke: COL.ink, sw: 5 });
     // coins
-    counter(ctx, W - 300, 50, 'coin', fmt(this.coinShown), { w: 200, h: 48 });
+    counter(ctx, W - (this.fsBtn ? 370 : 300), 50, 'coin', fmt(this.coinShown), { w: 200, h: 48 });
     // tip
     const tip = TIPS[this.tipI];
     const a = Math.min(1, this.tipT * 3, (6 - this.tipT) * 3);
@@ -8090,7 +8412,10 @@ const { Modal } = __req("src/engine/scene.js");
 const { Button, Slider, Toggle, text, panel, para, COL } = __req("src/engine/ui.js");
 const { Save } = __req("src/engine/storage.js");
 const { CFG } = __req("src/config.js");
-const { MenuScene } = __req("src/scenes/common.js");
+const { MenuScene, showHomeScreenHelp, showExternalHelp, installApp } = __req("src/scenes/common.js");
+const { Display } = __req("src/engine/display.js");
+
+const SETTING_ROWS = [160, 214, 268, 322, 376, 430, 484];
 
 class SettingsScene extends MenuScene {
   constructor(game) { super(game, '설정', 'purple'); }
@@ -8104,12 +8429,33 @@ class SettingsScene extends MenuScene {
     this.left = { x: lx, y: 108, w: lw, h: 580 };
     const cx = lx + 200;
     const save = () => { Save.save(); this.game.applySettings(); };
-    this.ui.add(new Slider({ x: cx, y: 168, w: lw - 290, value: st.music, color: 'pink', onChange: (v) => { st.music = v; save(); } }));
-    this.ui.add(new Slider({ x: cx, y: 236, w: lw - 290, value: st.sfx, color: 'blue', onChange: (v) => { st.sfx = v; save(); this.game.audio.play('jelly', { rate: 1.3 }); } }));
-    this.ui.add(new Toggle({ x: cx, y: 282, value: st.shake, onChange: (v) => { st.shake = v; save(); } }));
-    this.ui.add(new Toggle({ x: cx, y: 346, value: st.vibrate, onChange: (v) => { st.vibrate = v; save(); } }));
-    this.ui.add(new Toggle({ x: cx, y: 410, value: st.touch !== 'off', onChange: (v) => { st.touch = v ? 'auto' : 'off'; save(); } }));
-    this.ui.add(new Toggle({ x: cx, y: 474, value: st.quality === 'high', onChange: (v) => { st.quality = v ? 'high' : 'normal'; save(); } }));
+    const R = SETTING_ROWS;
+    this.ui.add(new Slider({ x: cx, y: R[0], w: lw - 290, value: st.music, color: 'pink', onChange: (v) => { st.music = v; save(); } }));
+    this.ui.add(new Slider({ x: cx, y: R[1], w: lw - 290, value: st.sfx, color: 'blue', onChange: (v) => { st.sfx = v; save(); this.game.audio.play('jelly', { rate: 1.3 }); } }));
+    this.ui.add(new Toggle({ x: cx, y: R[2] - 23, value: st.shake, onChange: (v) => { st.shake = v; save(); } }));
+    this.ui.add(new Toggle({ x: cx, y: R[3] - 23, value: st.vibrate, onChange: (v) => { st.vibrate = v; save(); } }));
+    this.ui.add(new Toggle({ x: cx, y: R[4] - 23, value: st.touch !== 'off', onChange: (v) => { st.touch = v ? 'auto' : 'off'; save(); } }));
+    this.ui.add(new Toggle({ x: cx, y: R[5] - 23, value: st.quality === 'high', onChange: (v) => { st.quality = v ? 'high' : 'normal'; save(); } }));
+    // fullscreen: a real toggle where the Fullscreen API works, otherwise the right kind of help
+    const mode = Display.mode, fy = R[6];
+    this.fsNote = null;
+    if (mode === 'toggle') {
+      this.ui.add(new Toggle({ x: cx, y: fy - 23, value: Display.isFullscreen, onChange: (v) => {
+        st.autoFS = v; Save.save();
+        if (v) Display.enterSoon((ok) => { if (!ok) { this.game.toast('이 브라우저에서는 전체 화면을 쓸 수 없어요', { icon: 'info' }); this.build(); } });
+        else Display.exit();
+      } }));
+    } else if (mode === 'help') {
+      this.ui.add(new Button({ x: cx, y: fy - 24, w: 176, h: 48, label: '방법 보기', icon: 'share', iconSize: 30, color: 'blue', size: 19, onClick: () => showHomeScreenHelp(this.game) }));
+    } else if (mode === 'external') {
+      this.ui.add(new Button({ x: cx, y: fy - 24, w: 176, h: 48, label: '브라우저로', icon: 'fullscreen', iconSize: 30, color: 'blue', size: 19, onClick: () => showExternalHelp(this.game) }));
+    } else {
+      this.fsNote = Display.standalone ? '앱으로 실행 중 ✓' : '여기서는 쓸 수 없어요';
+    }
+    if (Display.canInstall) {
+      const ix = cx + (mode === 'toggle' ? 108 : 190);
+      this.ui.add(new Button({ x: ix, y: fy - 24, w: Math.max(150, lx + lw - 24 - ix), h: 48, label: '앱 설치', icon: 'addhome', iconSize: 30, color: 'green', size: 19, onClick: () => installApp(this.game) }));
+    }
     const bw = (lw - 72) / 2;
     this.ui.add(new Button({ x: lx + 24, y: 560, w: bw, h: 76, label: '튜토리얼 다시', icon: 'info', color: 'blue', size: 21,
       onClick: () => { Save.data.tutorial = false; Save.save(); this.game.toast('다음 달리기에서 튜토리얼이 나와요!', { icon: 'info' }); } }));
@@ -8125,8 +8471,9 @@ class SettingsScene extends MenuScene {
     this.drawBg(ctx);
     const L = this.left;
     panel(ctx, L.x, L.y, L.w, L.h, { r: 30 });
-    const rows = [['배경음', 168], ['효과음', 236], ['화면 흔들림', 305], ['진동 (모바일)', 369], ['터치 버튼 표시', 433], ['고화질 그래픽', 497]];
-    for (const [label, y] of rows) text(ctx, label, L.x + 36, y, { size: 22, align: 'left', color: COL.ink });
+    const labels = ['배경음', '효과음', '화면 흔들림', '진동 (모바일)', '터치 버튼 표시', '고화질 그래픽', '전체 화면'];
+    labels.forEach((label, i) => text(ctx, label, L.x + 36, SETTING_ROWS[i], { size: 22, align: 'left', color: COL.ink }));
+    if (this.fsNote) text(ctx, this.fsNote, L.x + 200, SETTING_ROWS[6], { size: 18, font: 'bold', align: 'left', color: COL.ink2 });
     const rx = L.x + L.w + 24, rw = W - rx - 40;
     panel(ctx, rx, 108, rw, 580, { r: 30, fill: '#fffaf3', fill2: '#efe4ff' });
     text(ctx, '조작 방법', rx + rw / 2, 146, { size: 28, color: COL.purpleD, stroke: '#fff', sw: 4 });
@@ -8137,10 +8484,11 @@ class SettingsScene extends MenuScene {
       '빨리 내려오기 · 공중에서 슬라이드',
       '일시 정지 · Esc · P',
       '게임패드 · A 점프, B 슬라이드',
+      '전체 화면 · 로비·일시 정지의 전체 화면 버튼',
     ];
-    help.forEach((h, i) => text(ctx, h, rx + 34, 196 + i * 38, { size: 19, font: 'bold', align: 'left', color: COL.ink, maxW: rw - 60 }));
-    text(ctx, '게임 정보', rx + rw / 2, 448, { size: 24, color: COL.purpleD, stroke: '#fff', sw: 4 });
-    para(ctx, `디저트 대시 v${CFG.VERSION} · 프로젝트 kukirun\n모든 캐릭터·그림·음악·효과음은 이 게임을 위해 새로 만든 오리지널 작품이에요.\n글꼴: Noto Sans CJK KR, Poppins (SIL Open Font License)`, rx + 34, 474, rw - 68, { size: 16, color: COL.ink2, lh: 25 });
+    help.forEach((h, i) => text(ctx, h, rx + 34, 192 + i * 36, { size: 19, font: 'bold', align: 'left', color: COL.ink, maxW: rw - 60 }));
+    text(ctx, '게임 정보', rx + rw / 2, 462, { size: 24, color: COL.purpleD, stroke: '#fff', sw: 4 });
+    para(ctx, `디저트 대시 v${CFG.VERSION} · 프로젝트 kukirun\n모든 캐릭터·그림·음악·효과음은 이 게임을 위해 새로 만든 오리지널 작품이에요.\n글꼴: Noto Sans CJK KR, Poppins (SIL Open Font License)`, rx + 34, 488, rw - 68, { size: 16, color: COL.ink2, lh: 25 });
     if (!Save.available) text(ctx, '※ 이 브라우저에서는 저장이 꺼져 있어요', rx + rw / 2, 660, { size: 16, font: 'bold', color: COL.redD });
     this.ui.draw(ctx);
     this.drawChrome(ctx);
@@ -9720,8 +10068,9 @@ function pauseOverlay(ctx, s, W, H) {
   ribbon(ctx, W / 2, py + 6, 300, '일시 정지', 'purple', 30);
   text(ctx, `${fmt(s.score)}점  ·  LAND ${s.landNo}  ·  ${fmt(s.dist)}m`, W / 2, py + 64, { size: 19, font: 'bold', color: COL.ink2 });
   s.pauseUI.draw(ctx);
-  text(ctx, '배경음', W / 2 - 80, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
-  text(ctx, '효과음', W / 2 + 80, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
+  text(ctx, '배경음', s.musicBtn.x, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
+  text(ctx, '효과음', s.sfxBtn.x, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
+  if (s.fsBtn) text(ctx, '전체 화면', s.fsBtn.x, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
 }
 
 function debugOverlay(ctx, s, cam) {
@@ -9774,6 +10123,8 @@ const { Progress } = __req("src/game/progress.js");
 const { CHAR, LANDS, POWERUPS } = __req("src/data/content.js");
 const { Save } = __req("src/engine/storage.js");
 const { renderRun } = __req("src/scenes/run_view.js");
+const { fsButton } = __req("src/scenes/common.js");
+const { Display } = __req("src/engine/display.js");
 
 const GY = CFG.GROUND_Y;
 const JELLY_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 16, 14, 12, 9, 7, 4, 2];
@@ -9839,8 +10190,9 @@ class RunScene extends Scene {
     g.audio.play('count_beep');
     this.visHandler = () => { if (document.hidden && !this.paused && this.state !== 'over') this.setPaused(true); };
     document.addEventListener('visibilitychange', this.visHandler);
+    Display.keepAwake(true);
   }
-  exit() { document.removeEventListener('visibilitychange', this.visHandler); }
+  exit() { document.removeEventListener('visibilitychange', this.visHandler); Display.keepAwake(false); }
 
   buildUI() {
     this.ui.clear();
@@ -9852,10 +10204,14 @@ class RunScene extends Scene {
     this.pauseUI.add(new Button({ x, y: H / 2 - 18, w: bw, h: bh, label: '다시 시작', icon: 'retry', color: 'orange', onClick: () => this.confirmLeave(true) }));
     this.pauseUI.add(new Button({ x, y: H / 2 + 74, w: bw, h: bh, label: '로비로', icon: 'home', color: 'pink', onClick: () => this.confirmLeave(false) }));
     const st = Save.data.settings;
-    this.musicBtn = this.pauseUI.add(new Button({ x: W / 2 - 80, y: H / 2 + 200, w: 64, round: true, icon: st.music > 0 ? 'music_on' : 'music_off', iconSize: 44, color: 'cream',
+    const fs = fsButton(this.game, 0, H / 2 + 200, { w: 64, iconSize: 40 });
+    const xs = fs ? [W / 2 - 120, W / 2, W / 2 + 120] : [W / 2 - 80, W / 2 + 80];
+    this.musicBtn = this.pauseUI.add(new Button({ x: xs[0], y: H / 2 + 200, w: 64, round: true, icon: st.music > 0 ? 'music_on' : 'music_off', iconSize: 44, color: 'cream',
       onClick: (b) => { st.music = st.music > 0 ? 0 : 0.7; this.game.applySettings(); b.icon = st.music > 0 ? 'music_on' : 'music_off'; Save.save(); } }));
-    this.sfxBtn = this.pauseUI.add(new Button({ x: W / 2 + 80, y: H / 2 + 200, w: 64, round: true, icon: st.sfx > 0 ? 'sound_on' : 'sound_off', iconSize: 44, color: 'cream',
+    this.sfxBtn = this.pauseUI.add(new Button({ x: xs[1], y: H / 2 + 200, w: 64, round: true, icon: st.sfx > 0 ? 'sound_on' : 'sound_off', iconSize: 44, color: 'cream',
       onClick: (b) => { st.sfx = st.sfx > 0 ? 0 : 0.9; this.game.applySettings(); b.icon = st.sfx > 0 ? 'sound_on' : 'sound_off'; Save.save(); } }));
+    this.fsBtn = fs;
+    if (fs) { fs.x = xs[2]; this.pauseUI.add(fs); }
   }
   layout() { if (this.pauseUI) this.buildUI(); }
 
@@ -10685,6 +11041,7 @@ const { SceneManager } = __req("src/engine/scene.js");
 const { Toasts, text, COL } = __req("src/engine/ui.js");
 const { Assets } = __req("src/engine/assets.js");
 const { Save } = __req("src/engine/storage.js");
+const { Display } = __req("src/engine/display.js");
 const { Progress } = __req("src/game/progress.js");
 const { LoadingScene } = __req("src/scenes/loading.js");
 const { TitleScene } = __req("src/scenes/title.js");
@@ -10723,6 +11080,9 @@ class Game {
     this.errors = [];
     Save.load();
     this.applySettings();
+    Display.init({ auto: () => Save.data.settings.autoFS !== false });
+    // fullscreen / install state changed: rebuild buttons; leaving fullscreen mid-run pauses it
+    Display.onChange((kind) => { this.scenes.layout(); if (kind === 'fs' && !Display.isFullscreen) this.scenes.blur(); });
     this.input.handler = {
       pointer: (t, p) => this.scenes.pointer(t, p),
       key: (code, acts) => this.onKey(code, acts),
@@ -10730,7 +11090,12 @@ class Game {
       blur: () => this.scenes.blur(),
     };
     this.input.onFirstGesture = () => this.audio.unlock();
-    this.view.onResize = () => this.scenes.layout();
+    let wasRotated = this.view.rotated;
+    this.view.onResize = () => {
+      this.scenes.layout();
+      // turning the phone mid-run pauses so nobody crashes while rotating
+      if (this.view.rotated !== wasRotated) { wasRotated = this.view.rotated; this.scenes.blur(); }
+    };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.audio.suspend(); else this.audio.resume(); });
     window.addEventListener('error', (e) => this.errors.push(String(e.message || e)));
     window.addEventListener('unhandledrejection', (e) => this.errors.push(String(e.reason && e.reason.message || e.reason)));
@@ -10751,6 +11116,17 @@ class Game {
     loading.p.audio = 1;
     loading.done = true;
     window.__DD_READY__ = true;
+    this.registerSW();
+  }
+
+  /** Offline cache + "install as app". Registered after loading so the precache reuses the HTTP cache. */
+  registerSW() {
+    try {
+      if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol) || Display.embedded) return;
+      const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+      if (local && !/[?&]sw\b/.test(location.search)) return; // keep dev servers cache-free
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch((e) => console.warn('service worker', e));
+    } catch (e) { /* ignore */ }
   }
 
   async loadFonts() {

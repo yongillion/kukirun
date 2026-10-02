@@ -8,7 +8,7 @@ import { fmt, TAU, Ease } from '../engine/util.js';
 import { Save } from '../engine/storage.js';
 import { Progress } from '../game/progress.js';
 import { CHAR, CHARS, PET, PETS, TIPS, xpNeed } from '../data/content.js';
-import { drawLobbyBg, drawChar, drawPet, pill } from './common.js';
+import { drawLobbyBg, drawChar, drawPet, pill, fsButton } from './common.js';
 
 export class LobbyScene extends Scene {
   enter() {
@@ -39,6 +39,8 @@ export class LobbyScene extends Scene {
     });
     this.playBtn = this.ui.add(new Button({ x: colX, y: 440, w: bw * 2 + gap, h: 128, label: '달리기!', icon: 'play', iconSize: 76, color: 'green', size: 48, key: ['confirm', 'Space'], sound: 'ui_select', onClick: () => this.game.goScene('prerun') }));
     this.ui.add(new Button({ x: W - 50, y: 50, w: 58, round: true, icon: 'gear', iconSize: 40, color: 'cream', onClick: () => this.game.goScene('settings') }));
+    this.fsBtn = fsButton(this.game, W - 120, 50);
+    if (this.fsBtn) this.ui.add(this.fsBtn);
   }
   update(dt) {
     super.update(dt);
@@ -113,7 +115,7 @@ export class LobbyScene extends Scene {
     text(ctx, '최고 기록', 74, 119, { size: 17, align: 'left', color: '#ffe680', stroke: COL.ink, sw: 4 });
     text(ctx, fmt(d.best), 306, 120, { size: 22, font: 'num', align: 'right', color: '#fff', stroke: COL.ink, sw: 5 });
     // coins
-    counter(ctx, W - 300, 50, 'coin', fmt(this.coinShown), { w: 200, h: 48 });
+    counter(ctx, W - (this.fsBtn ? 370 : 300), 50, 'coin', fmt(this.coinShown), { w: 200, h: 48 });
     // tip
     const tip = TIPS[this.tipI];
     const a = Math.min(1, this.tipT * 3, (6 - this.tipT) * 3);

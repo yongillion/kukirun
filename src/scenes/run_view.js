@@ -153,8 +153,9 @@ function pauseOverlay(ctx, s, W, H) {
   ribbon(ctx, W / 2, py + 6, 300, '일시 정지', 'purple', 30);
   text(ctx, `${fmt(s.score)}점  ·  LAND ${s.landNo}  ·  ${fmt(s.dist)}m`, W / 2, py + 64, { size: 19, font: 'bold', color: COL.ink2 });
   s.pauseUI.draw(ctx);
-  text(ctx, '배경음', W / 2 - 80, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
-  text(ctx, '효과음', W / 2 + 80, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
+  text(ctx, '배경음', s.musicBtn.x, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
+  text(ctx, '효과음', s.sfxBtn.x, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
+  if (s.fsBtn) text(ctx, '전체 화면', s.fsBtn.x, H / 2 + 246, { size: 15, font: 'bold', color: COL.ink2 });
 }
 
 function debugOverlay(ctx, s, cam) {

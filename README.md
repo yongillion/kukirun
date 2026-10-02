@@ -15,6 +15,17 @@
   - 저장소 Settings → Pages → Build and deployment → Source: **Deploy from a branch**, Branch: **main / (root)** 로 설정하면 배포돼요.
   - 빌드 단계가 필요 없어요 (`dist/game.js`가 저장소에 포함되어 있고, `.nojekyll`로 파일을 그대로 서비스해요).
 
+## 모바일에서 전체 화면으로 하기
+
+- **안드로이드 (Chrome · 삼성 인터넷 등)**: 사이트를 열고 화면을 한 번 누르면 자동으로 **전체 화면 + 가로 고정**이 돼요.
+  로비·타이틀 오른쪽 위의 전체 화면 버튼, 일시 정지 메뉴, 설정 → 전체 화면에서 켜고 끌 수 있어요.
+  설정 → **앱 설치** (또는 Chrome 메뉴 → 홈 화면에 추가 / 앱 설치)로 설치하면 홈 화면 아이콘에서 바로 전체 화면으로 실행돼요.
+- **iPhone (Safari)**: iPhone Safari는 웹페이지 전체 화면 기능을 막아 두어서, 공유 버튼 → **홈 화면에 추가** →
+  홈 화면의 '디저트 대시' 아이콘으로 실행하면 주소창 없이 전체 화면으로 열려요. (게임 안의 전체 화면 버튼을 누르면 방법이 나와요. iPad는 버튼으로 바로 돼요.)
+- **카카오톡에서 링크를 열었다면**: 전체 화면 버튼 → '브라우저로 열기'로 Chrome / Safari에서 다시 열 수 있어요.
+- 휴대폰을 세로로 들고 있어도 게임이 90° 돌아간 채로 꽉 차게 표시돼요. 화면 회전 잠금이 켜져 있어도 휴대폰을 옆으로 눕혀서 플레이하면 돼요.
+- 노치·둥근 모서리 안쪽에 화면이 맞춰지고, 달리는 동안에는 화면이 꺼지지 않아요. 한 번 접속한 뒤에는 오프라인에서도 실행돼요 (서비스 워커 캐시).
+
 ## 조작법
 
 | 동작 | 터치 / 마우스 | 키보드 | 게임패드 |
@@ -47,6 +58,8 @@
 ```
 index.html          ← 실행 파일 (dist/game.js 사용, 더블클릭으로 실행)
 dev.html            ← 개발용 (src/ ES 모듈 직접 로드, 서버 필요)
+manifest.webmanifest ← 홈 화면 앱 설정 (전체 화면 · 가로 · 아이콘)
+sw.js               ← 오프라인 캐시 서비스 워커 (빌드할 때 자동 생성)
 css/game.css
 src/                ← 게임 소스 (ES 모듈)
   main.js           게임 셸, 씬 전환, 결과 처리
@@ -57,7 +70,7 @@ src/                ← 게임 소스 (ES 모듈)
   data/             콘텐츠 데이터 + 자동 생성된 아틀라스·오디오 목록
 dist/game.js        ← src/를 하나로 묶은 번들 (자동 생성)
 assets/
-  img/              캐릭터·펫·배경·장애물·아이템·이펙트·UI 스프라이트 시트 (PNG)
+  img/              캐릭터·펫·배경·장애물·아이템·이펙트·UI 스프라이트 시트 (PNG), app/ 홈 화면 아이콘
   audio/            효과음 60개 + 배경음악 8곡 + 징글 2개 (MP3), audiopack.js(파일 직접 실행용 묶음)
   fonts/            글꼴 (Noto Sans CJK KR, Poppins — SIL OFL)
 tools/
@@ -66,18 +79,22 @@ tools/
   art/              그림 생성기 (Canvas 코드 → PNG). modules/ 에 캐릭터·배경 등 그리는 코드
   audio/            사운드 신디사이저 (Python) — 효과음·작곡·믹싱·마스터링
   fonts/            글꼴 서브셋 생성
+  sw.template.js    서비스 워커 원본 (build.mjs가 캐시 목록·버전을 넣어 sw.js 생성)
   test/solver.mjs   모든 레벨 패턴이 모든 속도에서 통과 가능한지 검사하는 솔버
+  test/mobile.mjs   휴대폰 에뮬레이션 테스트 (가로/세로, 전체 화면, iPhone, 오프라인)
 ```
 
 ## 수정하고 다시 빌드하기
 
-- 코드를 고친 뒤: `node tools/build.mjs` (또는 `node tools/build.mjs --watch`) → `dist/game.js` 갱신.
+- 코드를 고친 뒤: `node tools/build.mjs` (또는 `node tools/build.mjs --watch`) → `dist/game.js`와 `sw.js` 갱신.
   개발할 때는 `node tools/serve.mjs` 후 `dev.html`을 열면 빌드 없이 바로 반영돼요.
 - 그림 다시 만들기: `node tools/art/export.mjs [모듈명…]` (Playwright + Chromium 필요).
   미리보기는 서버 실행 후 `tools/art/forge.html?modules=characters` 를 브라우저로 열면 돼요.
 - 사운드 다시 만들기: `python3 tools/audio/build.py` (numpy, scipy, ffmpeg 필요).
 - 글꼴 다시 만들기: `python3 tools/fonts/build_fonts.py` (fontTools 필요).
 - 레벨 검사: `node tools/test/solver.mjs` → 모든 패턴 × 속도 조합의 통과 가능 여부 출력.
+- 모바일 검사: `node tools/test/mobile.mjs` (Playwright 필요) → 휴대폰 화면 스크린샷과 함께 PASS/FAIL 출력.
+- 개발 서버(localhost)에서는 서비스 워커가 꺼져 있어요. 시험해 보려면 주소에 `?sw`를 붙이세요.
 - 밸런스는 `src/config.js`(속도·에너지·점수)와 `src/data/content.js`(캐릭터·펫·연구소·미션)에서 조절해요.
 
 ## 디버그 모드

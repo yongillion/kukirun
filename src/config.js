@@ -2,7 +2,7 @@
 //  Dessert Dash — global tuning constants (logical units: 720 px tall view)
 // =============================================================================
 export const CFG = {
-  VERSION: '1.0.0',
+  VERSION: '1.1.0',
   SAVE_KEY: 'dessert-dash-save-v1',
 
   // view

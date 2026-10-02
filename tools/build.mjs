@@ -13,6 +13,7 @@
 // =============================================================================
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,7 +100,24 @@ function __req(id) {
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, out);
   console.log(`built dist/game.js — ${order.length} modules, ${(out.length / 1024).toFixed(0)} KB in ${Date.now() - t0} ms`);
+  buildSW();
   return out;
+}
+
+/** sw.js = tools/sw.template.js + the precache list + a version hash of those files. */
+export function buildSW() {
+  const walk = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(path.posix.join(dir, e.name)) : [path.posix.join(dir, e.name)]);
+  const files = ['index.html', 'css/game.css', 'dist/game.js', 'manifest.webmanifest',
+    'assets/fonts/fontpack.js', 'assets/audio/audiopack.js',
+    ...walk('assets/img').filter((f) => f.endsWith('.png')).sort()];
+  const h = crypto.createHash('sha1');
+  for (const f of files) h.update(f).update(fs.readFileSync(path.join(ROOT, f)));
+  const version = h.digest('hex').slice(0, 12);
+  const tpl = fs.readFileSync(path.join(ROOT, 'tools', 'sw.template.js'), 'utf8');
+  const out = tpl.replace('__VERSION__', version).replace('__PRECACHE__', JSON.stringify(['./', ...files], null, 2));
+  fs.writeFileSync(path.join(ROOT, 'sw.js'), out);
+  console.log(`built sw.js — ${files.length} files precached, version ${version}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

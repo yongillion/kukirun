@@ -9,3 +9,5 @@ Thumbs.db
 .env
 # local upload helper (not part of the game)
 push_to_github.bat
+# one-shot commit message for push_to_github.bat (deleted after use)
+.commit-message.txt
