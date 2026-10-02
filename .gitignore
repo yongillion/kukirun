@@ -1,0 +1,11 @@
+# dependencies / caches
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+# local scratch
+*.log
+.env
+# local upload helper (not part of the game)
+push_to_github.bat

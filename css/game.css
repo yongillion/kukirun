@@ -1,0 +1,41 @@
+/* Dessert Dash — page shell. The whole game is drawn on one canvas. */
+:root {
+  --bg: #1c1018;
+  --ink: #4a2a1a;
+  --cream: #fff6e6;
+  --pink: #ff6fa3;
+  color-scheme: dark;
+}
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#game {
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+#boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--cream);
+  font: 700 18px "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  pointer-events: none;
+}
+#boot[hidden] { display: none !important; }
+noscript p {
+  position: fixed; inset: 0; display: grid; place-items: center; color: var(--cream);
+  font: 700 18px system-ui, sans-serif;
+}

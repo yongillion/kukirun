@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Dessert Dash — Art Forge</title>
+<style>
+  body { margin: 0; padding: 16px; font: 14px system-ui, sans-serif; background: #2a2230; color: #f4ecf7; }
+  figure { margin: 0 0 24px; padding: 12px; border-radius: 10px;
+    background: repeating-conic-gradient(#3a3242 0% 25%, #463c50 0% 50%) 50% / 24px 24px; }
+  figcaption { margin-bottom: 8px; font-weight: 600; }
+</style>
+<script src="../../assets/fonts/fontpack.js"></script>
+</head>
+<body>
+<h1>Art Forge</h1>
+<p>Usage: forge.html?modules=characters,pets — renders the listed modules from tools/art/modules/. Needs an http server (node tools/serve.mjs).</p>
+<div id="out"></div>
+<script type="module">
+  import { runForge, preview } from './forge.js';
+  window.runForge = runForge;
+  const q = new URLSearchParams(location.search);
+  if (!q.has('headless') && q.get('modules')) {
+    preview(q.get('modules').split(','), document.getElementById('out'));
+  }
+  window.__forgeReady = true;
+</script>
+</body>
+</html>

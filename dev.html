@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>디저트 대시 · Dessert Dash (dev)</title>
+<link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+<canvas id="game" tabindex="0"></canvas>
+<div id="boot">디저트 대시를 불러오는 중… (dev.html은 로컬 서버가 필요해요: node tools/serve.mjs)</div>
+<script type="module">
+  import './src/main.js';
+  document.getElementById('boot').hidden = true;
+</script>
+</body>
+</html>

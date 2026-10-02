@@ -1,0 +1,16 @@
+{
+  "name": "kukirun",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dessert Dash (디저트 대시) — an original single-player web auto-runner",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "watch": "node tools/build.mjs --watch",
+    "serve": "node tools/serve.mjs 8080",
+    "art": "node tools/art/export.mjs",
+    "audio": "python3 tools/audio/build.py",
+    "fonts": "python3 tools/fonts/build_fonts.py",
+    "test": "node tools/test/solver.mjs"
+  }
+}
